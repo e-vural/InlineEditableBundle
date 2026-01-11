@@ -1,0 +1,33 @@
+{# Base template - Ortak yapı #}
+<div class="inline-edit-field" 
+     data-inline-edit-manager="true"
+     data-inline-edit-url="{{ config.url }}"
+     data-inline-edit-field-path="{{ config.editFieldFormName }}"
+     data-inline-edit-value="{% if config.selected_data is defined and config.selected_data is not empty %}{% if config.selected_data is iterable %}{{ config.selected_data|join(',') }}{% else %}{{ config.selected_data }}{% endif %}{% else %}{{ config.value is iterable ? config.value|join(',') : config.value }}{% endif %}"
+     data-inline-edit-input-type="{{ config.type }}"
+     data-inline-edit-html-type="{{ config.htmlType ?? config.type }}"
+     {% if config.multiple is defined and config.multiple %}data-inline-edit-multiple="true"{% endif %}
+     {% if config.placeholder is defined and config.placeholder %}data-inline-edit-placeholder="{{ config.placeholder }}"{% endif %}>
+    
+    {# Read Mode #}
+    <div class="inline-edit-read" data-inline-edit-read-mode>
+        <span class="inline-edit-value" data-inline-edit-editable>
+            {{ config.displayValue ?: '-' }}
+        </span>
+        {% if config.editable %}
+        <button type="button" 
+                class="btn btn-link btn-sm p-0 ms-1 inline-edit-trigger" 
+                data-inline-edit-enable
+                title="Düzenlemek için tıklayın">
+            <i class="ri-pencil-line"></i>
+        </button>
+        {% endif %}
+    </div>
+    
+    {# Edit Mode #}
+    <div class="inline-edit-edit d-none" data-inline-edit-edit-mode>
+        {% block edit_content %}{% endblock %}
+        <div class="invalid-feedback d-block" data-inline-edit-error></div>
+    </div>
+</div>
+

@@ -1,0 +1,44 @@
+/* Inline Edit Styles */
+.inline-edit-field {
+    position: relative;
+}
+
+.inline-edit-read {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.inline-edit-value {
+    cursor: pointer;
+    user-select: none;
+}
+
+.inline-edit-value:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+    border-radius: 0.25rem;
+    padding: 0.125rem 0.25rem;
+}
+
+.inline-edit-trigger {
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.inline-edit-field:hover .inline-edit-trigger {
+    opacity: 1;
+}
+
+.inline-edit-edit {
+    min-width: 200px;
+}
+
+.inline-edit-edit .form-control-sm {
+    font-size: 0.875rem;
+}
+
+.inline-edit-edit .invalid-feedback {
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+}
+

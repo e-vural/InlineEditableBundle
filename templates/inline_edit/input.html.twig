@@ -1,0 +1,17 @@
+{% extends '@InlineEditable/inline_edit/base.html.twig' %}
+
+{% block edit_content %}
+    <div class="d-flex align-items-center gap-2">
+        <input type="{{ config.htmlType }}" 
+               class="form-control form-control-sm" 
+               data-inline-edit-input
+               value="{{ config.value }}"
+               {% if config.placeholder %}placeholder="{{ config.placeholder }}"{% endif %}
+               {% for attrName, attrValue in config.attr %}
+                   {{ attrName }}="{{ attrValue }}"
+               {% endfor %}>
+        
+        {% include '@InlineEditable/inline_edit/_buttons.html.twig' %}
+    </div>
+{% endblock %}
+

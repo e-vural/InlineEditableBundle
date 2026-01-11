@@ -1,0 +1,24 @@
+{
+    "name": "vrl/inline-editable-bundle",
+    "type": "symfony-bundle",
+    "description": "Inline Editable Bundle for Symfony",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Vrl\\InlineEditableBundle\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=8.2",
+        "symfony/framework-bundle": "^7.0",
+        "symfony/twig-bundle": "^7.0",
+        "twig/twig": "^3.0"
+    },
+    "extra": {
+        "symfony": {
+            "allow-contrib": false,
+            "require": "7.4.*"
+        }
+    }
+}
+

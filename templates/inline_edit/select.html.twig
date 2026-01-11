@@ -1,0 +1,38 @@
+{% extends '@InlineEditable/inline_edit/base.html.twig' %}
+
+{% block edit_content %}
+    {# selected_data'yı normalize et (multiple için array kontrolü) #}
+    {% set selected_data = config.selected_data %}
+    {% if config.multiple and selected_data is not iterable %}
+        {% set selected_data = selected_data ? selected_data|split(',') : [] %}
+    {% endif %}
+    
+    <div class="d-flex align-items-center gap-2">
+        <select class="form-select form-select-sm" 
+                data-inline-edit-input
+                {% if config.multiple %}multiple{% endif %}
+                {% if config.multiple and config.data is not empty %}size="{{ config.data|length > 5 ? 5 : config.data|length }}"{% endif %}
+                {% for attrName, attrValue in config.attr %}
+                    {{ attrName }}="{{ attrValue }}"
+                {% endfor %}>
+            {% if not config.multiple and config.placeholder %}
+                <option value="">{{ config.placeholder }}</option>
+            {% endif %}
+            {% if config.data is not empty %}
+                {% for item in config.data %}
+                    <option value="{{ item[config.choice_value_key] }}" 
+                            {% if config.multiple %}
+                                {% if item[config.choice_value_key] in selected_data %}selected{% endif %}
+                            {% else %}
+                                {% if item[config.choice_value_key] == selected_data %}selected{% endif %}
+                            {% endif %}>
+                        {{ item[config.choice_label_key] }}
+                    </option>
+                {% endfor %}
+            {% endif %}
+        </select>
+        
+        {% include '@InlineEditable/inline_edit/_buttons.html.twig' %}
+    </div>
+{% endblock %}
+

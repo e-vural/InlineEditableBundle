@@ -1,0 +1,16 @@
+{% extends '@InlineEditable/inline_edit/base.html.twig' %}
+
+{% block edit_content %}
+    <div class="d-flex align-items-center gap-2">
+        <textarea class="form-control form-control-sm" 
+                  data-inline-edit-input
+                  rows="{{ config.rows }}"
+                  {% if config.placeholder %}placeholder="{{ config.placeholder }}"{% endif %}
+                  {% for attrName, attrValue in config.attr %}
+                      {{ attrName }}="{{ attrValue }}"
+                  {% endfor %}>{{ config.value }}</textarea>
+        
+        {% include '@InlineEditable/inline_edit/_buttons.html.twig' %}
+    </div>
+{% endblock %}
+
