@@ -5,9 +5,10 @@ namespace Vrl\InlineEditableBundle\DependencyInjection;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
+use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
 
-class InlineEditableExtension extends Extension
+class InlineEditableExtension extends Extension implements PrependExtensionInterface
 {
     public function load(array $configs, ContainerBuilder $container): void
     {
@@ -19,6 +20,18 @@ class InlineEditableExtension extends Extension
 
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__.'/../../config'));
         $loader->load('services.yaml');
+    }
+
+    public function prepend(ContainerBuilder $container): void
+    {
+        // Bundle'ın asset path'ini asset mapper'a otomatik ekle
+        $container->prependExtensionConfig('framework', [
+            'asset_mapper' => [
+                'paths' => [
+                    'vendor/vrl/inline-editable-bundle/assets',
+                ],
+            ],
+        ]);
     }
 
     public function getAlias(): string

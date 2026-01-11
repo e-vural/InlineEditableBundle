@@ -1,8 +1,22 @@
 {
     "name": "vrl/inline-editable-bundle",
     "type": "symfony-bundle",
-    "description": "Inline Editable Bundle for Symfony",
+    "description": "Inline Editable Bundle for Symfony - Inline editing functionality with clean code architecture",
     "license": "MIT",
+    "keywords": [
+        "symfony",
+        "bundle",
+        "inline-edit",
+        "inline-editable",
+        "ajax",
+        "form"
+    ],
+    "authors": [
+        {
+            "name": "Emre Vural",
+            "email": "emrevural20@gmail.com"
+        }
+    ],
     "autoload": {
         "psr-4": {
             "Vrl\\InlineEditableBundle\\": "src/"
