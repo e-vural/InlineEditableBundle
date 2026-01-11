@@ -4,9 +4,11 @@ services:
         autoconfigure: true
 
     Vrl\InlineEditableBundle\Twig\InlineEditableExtension:
+        tags:
+            - { name: twig.extension }
+
+    Vrl\InlineEditableBundle\Twig\InlineEditableRuntime:
         arguments:
             $twig: '@twig'
             $themes: '%inline_editable.themes%'
-        tags:
-            - { name: twig.extension }
 
