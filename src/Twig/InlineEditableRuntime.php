@@ -8,7 +8,8 @@ class InlineEditableRuntime
 {
     public function __construct(
         private Environment $twig,
-        private array $themes = []
+        private array $themes = [],
+        private string $editMode = 'inline'
     ) {
     }
 
@@ -40,6 +41,9 @@ class InlineEditableRuntime
         }
         
         $template = $this->resolveTemplate($type);
+        
+        // Edit mode'u config'e ekle
+        $config['editMode'] = $this->editMode;
         
         return $this->twig->render($template, [
             'config' => $config,

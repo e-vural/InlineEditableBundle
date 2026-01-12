@@ -168,25 +168,44 @@ class InlineEditManager {
 
             // Save butonuna tıklama
             if (e.target.matches('[data-inline-edit-save]') || e.target.closest('[data-inline-edit-save]')) {
-                if (field) {
-                    this.save(field, e)
+                // Popover içindeki butonlar için aktif field'ı kullan
+                const targetField = field || this.activeField
+                if (targetField) {
+                    this.save(targetField, e)
                 }
                 return
             }
 
             // Cancel butonuna tıklama
             if (e.target.matches('[data-inline-edit-cancel]') || e.target.closest('[data-inline-edit-cancel]')) {
-                if (field) {
-                    this.cancel(field, e)
+                // Popover içindeki butonlar için aktif field'ı kullan
+                const targetField = field || this.activeField
+                if (targetField) {
+                    this.cancel(targetField, e)
                 }
                 return
             }
 
             // Click outside - aktif field varsa ve dışına tıklandıysa cancel yap
             if (this.activeField && !this.activeField.contains(e.target)) {
-                const editMode = this.activeField.querySelector('[data-inline-edit-edit-mode]')
-                if (editMode && !editMode.contains(e.target)) {
-                    this.cancel(this.activeField)
+                const fieldEditMode = this.activeField.dataset.inlineEditMode || 'inline'
+                
+                // Popover modu için popover element'ini de kontrol et
+                if (fieldEditMode === 'popup') {
+                    const popoverElement = document.querySelector('.popover')
+                    const triggerBtn = this.activeField.querySelector('[data-inline-edit-enable]')
+                    
+                    // Popover içine veya trigger button'a tıklanmadıysa cancel yap
+                    if (popoverElement && !popoverElement.contains(e.target) && 
+                        triggerBtn && !triggerBtn.contains(e.target)) {
+                        this.cancel(this.activeField)
+                    }
+                } else {
+                    // Inline modu için mevcut kontrol
+                    const editMode = this.activeField.querySelector('[data-inline-edit-edit-mode]')
+                    if (editMode && !editMode.contains(e.target)) {
+                        this.cancel(this.activeField)
+                    }
                 }
             }
         }
@@ -245,6 +264,39 @@ class InlineEditManager {
     }
 
     /**
+     * Bundle'ın açtığı tüm açık popover'ları kapatır
+     */
+    closeAllOpenPopovers() {
+        // Tüm inline-edit-field elementlerini bul
+        const allFields = document.querySelectorAll('[data-inline-edit-manager="true"]')
+        
+        allFields.forEach(field => {
+            // Sadece popover modunda olan field'ları kontrol et
+            const editMode = field.dataset.inlineEditMode || 'inline'
+            if (editMode !== 'popup') return
+            
+            // Popover instance'ı varsa kapat
+            if (field._popoverInstance) {
+                try {
+                    const triggerButton = field.querySelector('[data-inline-edit-enable]')
+                    if (triggerButton) {
+                        const instance = bootstrap.Popover.getInstance(triggerButton)
+                        if (instance === field._popoverInstance) {
+                            // Popover'ı hide et ve dispose et
+                            instance.hide()
+                            instance.dispose()
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Error disposing popover instance:', error)
+                } finally {
+                    field._popoverInstance = null
+                }
+            }
+        })
+    }
+
+    /**
      * Edit mode'u aktif eder
      */
     enableEdit(fieldElement, event) {
@@ -253,15 +305,12 @@ class InlineEditManager {
             event.stopPropagation()
         }
 
+        // Bundle'ın açtığı tüm açık popover'ları kapat (ekran dışında kalanlar dahil)
+        this.closeAllOpenPopovers()
+
         // Eğer başka bir field edit mode'daysa önce onu kapat
         if (this.activeField && this.activeField !== fieldElement) {
             this.cancel(this.activeField)
-        }
-
-        // Edit mode zaten açıksa
-        const editMode = fieldElement.querySelector('[data-inline-edit-edit-mode]')
-        if (editMode && !editMode.classList.contains('d-none')) {
-            return
         }
 
         // Data attribute'lardan bilgileri oku
@@ -271,21 +320,53 @@ class InlineEditManager {
         const inputType = fieldElement.dataset.inlineEditInputType || 'input'
         const htmlType = fieldElement.dataset.inlineEditHtmlType || 'text'
         const placeholder = fieldElement.dataset.inlineEditPlaceholder || ''
+        const editMode = fieldElement.dataset.inlineEditMode || 'inline'
 
-        // Read mode ve edit mode'u bul
+        // Read mode'u bul
         const readMode = fieldElement.querySelector('[data-inline-edit-read-mode]')
         
-        if (!readMode || !editMode) {
+        if (!readMode) {
             console.warn('Inline edit field structure invalid:', fieldElement)
             return
         }
 
-        // Edit mode'u aç
-        readMode.classList.add('d-none')
-        editMode.classList.remove('d-none')
+        // Popover modu için özel işlem
+        if (editMode === 'popup') {
+            return this.enableEditPopover(fieldElement, {
+                url,
+                fieldPath,
+                originalValue,
+                inputType,
+                htmlType,
+                placeholder,
+                readMode
+            })
+        }
 
+        // Inline modu için edit mode'u bul
+        const editModeElement = fieldElement.querySelector('[data-inline-edit-edit-mode]')
+        if (!editModeElement) {
+            console.warn('Edit mode element not found for inline mode:', fieldElement)
+            return
+        }
+
+        // Edit mode zaten açıksa
+        if (editModeElement && !editModeElement.classList.contains('d-none')) {
+            return
+        }
+
+        // Template element'inden content'i clone'la
+        const contentTemplate = fieldElement.querySelector('[data-inline-edit-content-template]')
+        if (!contentTemplate) {
+            console.warn('Content template not found:', fieldElement)
+            return
+        }
+
+        // Template content'ini clone'la
+        const contentClone = contentTemplate.content.cloneNode(true)
+        
         // Input'u bul ve ayarla
-        const input = editMode.querySelector('[data-inline-edit-input]')
+        const input = contentClone.querySelector('[data-inline-edit-input]')
         if (input) {
             if (inputType === 'input' && input.tagName === 'INPUT') {
                 input.type = htmlType
@@ -294,26 +375,44 @@ class InlineEditManager {
                 input.placeholder = placeholder
             }
             
-            // Input değerini set et
-            this.setInputValue(input, originalValue)
+            // Güncel değeri kullan (dataset'ten al, çünkü updateFieldValue ile güncellenmiş olabilir)
+            const currentValue = fieldElement.dataset.inlineEditValue || originalValue
+            this.setInputValue(input, currentValue)
+        }
 
+        // Edit mode container'ı temizle ve clone'lanmış content'i ekle
+        editModeElement.innerHTML = ''
+        editModeElement.appendChild(contentClone)
+
+        // Edit mode'u aç
+        readMode.classList.add('d-none')
+        editModeElement.classList.remove('d-none')
+
+        // DOM'a eklendikten sonra gerçek form element'ini bul
+        const formElement = editModeElement.querySelector('[data-inline-edit-input]')
+
+        // Form element'ini focus et
+        if (formElement) {
             setTimeout(() => {
-                input.focus()
-                if (inputType === 'input' && input.tagName === 'INPUT') {
-                    input.select()
+                formElement.focus()
+                if (inputType === 'input' && formElement.tagName === 'INPUT') {
+                    formElement.select()
                 }
             }, 50)
         }
 
         // Aktif field'ı kaydet
         this.activeField = fieldElement
+        // Güncel değeri kullan
+        const currentValue = fieldElement.dataset.inlineEditValue || originalValue
         this.activeFieldData = {
             url,
             fieldPath,
-            originalValue,
+            originalValue: currentValue,
             inputType,
             htmlType,
-            placeholder
+            placeholder,
+            editMode: 'inline'
         }
 
         // Eski click outside listener'ı kaldır (eğer varsa)
@@ -346,14 +445,222 @@ class InlineEditManager {
         this.emit('opened', {
             field: fieldElement,
             fieldData: this.activeFieldData,
-            input: input
+            formElement: formElement
         })
 
         // Event emit: clicked (edit butonuna tıklandı)
         this.emit('clicked', {
             field: fieldElement,
             fieldData: this.activeFieldData,
-            input: input
+            formElement: formElement
+        })
+    }
+
+    /**
+     * Popover modu için edit mode'u aktif eder
+     */
+    enableEditPopover(fieldElement, config) {
+        const { url, fieldPath, originalValue, inputType, htmlType, placeholder, readMode } = config
+
+        // Trigger button'u bul
+        const triggerButton = readMode.querySelector('[data-inline-edit-enable]')
+        if (!triggerButton) {
+            console.warn('Popover trigger button not found:', fieldElement)
+            return
+        }
+
+        // Eğer zaten bir popover instance varsa dispose et
+        if (fieldElement._popoverInstance) {
+            try {
+                const triggerButton = readMode.querySelector('[data-inline-edit-enable]')
+                if (triggerButton) {
+                    const instance = bootstrap.Popover.getInstance(triggerButton)
+                    if (instance === fieldElement._popoverInstance) {
+                        fieldElement._popoverInstance.dispose()
+                    }
+                }
+            } catch (error) {
+                console.warn('Popover dispose error:', error)
+            } finally {
+                fieldElement._popoverInstance = null
+            }
+        }
+
+        // Template element'inden content'i clone'la
+        const contentTemplate = fieldElement.querySelector('[data-inline-edit-content-template]')
+        if (!contentTemplate) {
+            console.warn('Content template not found:', fieldElement)
+            return
+        }
+
+        // Template content'ini clone'la
+        const contentClone = contentTemplate.content.cloneNode(true)
+        
+        // Clone'lanmış tüm elementlere data-real="true" ekle
+        const allElements = contentClone.querySelectorAll('*')
+        allElements.forEach(el => {
+            el.setAttribute('data-real', 'true')
+        })
+        // Clone'lanmış root element'e de ekle
+        if (contentClone.firstElementChild) {
+            contentClone.firstElementChild.setAttribute('data-real', 'true')
+        }
+        
+        const input = contentClone.querySelector('[data-inline-edit-input]')
+        
+        if (input) {
+            if (inputType === 'input' && input.tagName === 'INPUT') {
+                input.type = htmlType
+            }
+            if (placeholder) {
+                input.placeholder = placeholder
+            }
+            
+            // Güncel değeri kullan (dataset'ten al, çünkü updateFieldValue ile güncellenmiş olabilir)
+            const currentValue = fieldElement.dataset.inlineEditValue || originalValue
+            this.setInputValue(input, currentValue)
+        }
+
+        // Clone'lanmış content'i bir div'e koy ve HTML string'ini al
+        const tempDiv = document.createElement('div')
+        tempDiv.appendChild(contentClone)
+        const popoverContentHtml = tempDiv.innerHTML
+
+        // Bootstrap Popover instance oluştur
+        const popoverInstance = new bootstrap.Popover(triggerButton, {
+            trigger: 'manual',
+            placement: 'auto',
+            container: 'body',
+            html: true,
+            sanitize: false,
+            content: popoverContentHtml,
+            title: 'Düzenle'
+        })
+
+        // Popover instance'ı field element'ine kaydet
+        fieldElement._popoverInstance = popoverInstance
+
+        // Aktif field'ı kaydet
+        this.activeField = fieldElement
+        // Güncel değeri kullan
+        const currentValue = fieldElement.dataset.inlineEditValue || originalValue
+        this.activeFieldData = {
+            url,
+            fieldPath,
+            originalValue: currentValue,
+            inputType,
+            htmlType,
+            placeholder,
+            editMode: 'popup',
+            popoverInstance: popoverInstance
+        }
+
+        // Popover event listener'ları ekle
+        const handlePopoverShown = () => {
+            // Popover gösterildiğinde form element'ini focus et ve opened event'ini emit et
+            setTimeout(() => {
+                // Popover element'ini DOM'dan bul (shown.bs.popover event'i tetiklendiğinde popover zaten DOM'da)
+                const popoverElement = document.querySelector('.popover')
+                if (!popoverElement) return
+                
+                const popoverBody = popoverElement.querySelector('.popover-body')
+                if (!popoverBody) return
+                
+                const formElement = popoverBody.querySelector('[data-inline-edit-input]')
+                if (formElement) {
+                    formElement.focus()
+                    if (inputType === 'input' && formElement.tagName === 'INPUT') {
+                        formElement.select()
+                    }
+                    
+                    // Popover içindeki gerçek form element ile opened event'ini emit et
+                    this.emit('opened', {
+                        field: fieldElement,
+                        fieldData: this.activeFieldData,
+                        formElement: formElement
+                    })
+                }
+            }, 100)
+        }
+
+        const handlePopoverHidden = () => {
+            // Popover gizlendiğinde, güncel HTML'i template'e kaydet
+            const popoverElement = document.querySelector('.popover')
+            if (popoverElement && this.activeField === fieldElement) {
+                const popoverBody = popoverElement.querySelector('.popover-body')
+                if (popoverBody) {
+                    // Popover'daki güncel content'i template'e kaydet
+                    const contentTemplate = fieldElement.querySelector('[data-inline-edit-content-template]')
+                    if (contentTemplate) {
+                        // Popover'daki select elementlerinin selected attribute'larını güncelle
+                        const selectInPopover = popoverBody.querySelector('select[data-inline-edit-input]')
+                        if (selectInPopover) {
+                            Array.from(selectInPopover.options).forEach(option => {
+                                if (option.selected) {
+                                    option.setAttribute('selected', 'selected')
+                                } else {
+                                    option.removeAttribute('selected')
+                                }
+                            })
+                        }
+                        
+                        // Popover'daki HTML'i al
+                        const popoverHtml = popoverBody.innerHTML
+                        
+                        // Template içeriğini güncelle
+                        // Not: Template element'inin content property'si read-only olduğu için
+                        // innerHTML kullanarak güncelliyoruz (template element'i normal element gibi davranır)
+                        contentTemplate.innerHTML = popoverHtml
+                    }
+                }
+            }
+            
+            // NOT: Popover instance'ı burada dispose etme
+            // closeEditMode içinde dispose edilecek
+            // Bu şekilde çift dispose önlenir
+        }
+
+        triggerButton.addEventListener('shown.bs.popover', handlePopoverShown)
+        triggerButton.addEventListener('hidden.bs.popover', handlePopoverHidden)
+
+        // Eski click outside listener'ı kaldır (eğer varsa)
+        if (this.boundHandleClickOutside) {
+            document.removeEventListener('click', this.boundHandleClickOutside, true)
+        }
+
+        // Click outside listener ekle (popover için)
+        this.boundHandleClickOutside = (e) => {
+            if (!this.activeField || this.activeField !== fieldElement) return
+            
+            const popoverElement = document.querySelector('.popover')
+            const triggerBtn = fieldElement.querySelector('[data-inline-edit-enable]')
+            
+            // Popover içine veya trigger button'a tıklanmadıysa cancel yap
+            if (popoverElement && !popoverElement.contains(e.target) && 
+                triggerBtn && !triggerBtn.contains(e.target)) {
+                this.cancel(this.activeField)
+            }
+        }
+
+        // Capture phase'de dinle
+        setTimeout(() => {
+            document.addEventListener('click', this.boundHandleClickOutside, true)
+        }, 0)
+
+        // Error mesajını temizle
+        this.clearError(fieldElement)
+
+        // Popover'ı göster
+        popoverInstance.show()
+
+        // NOT: opened event'ini burada emit etme, handlePopoverShown içinde emit edilecek
+        // Çünkü popover gösterilmeden önce popover içindeki gerçek element'e erişemeyiz
+
+        // Event emit: clicked (edit butonuna tıklandı)
+        this.emit('clicked', {
+            field: fieldElement,
+            fieldData: this.activeFieldData,
+            formElement: input // Clone'daki form element (henüz DOM'da değil)
         })
     }
 
@@ -370,18 +677,33 @@ class InlineEditManager {
             return
         }
 
-        const editMode = fieldElement.querySelector('[data-inline-edit-edit-mode]')
-        if (!editMode || editMode.classList.contains('d-none')) {
-            return
+        const editMode = fieldElement.dataset.inlineEditMode || 'inline'
+        let formElement = null
+
+        // Popover modu için popover içindeki form element'ini bul
+        if (editMode === 'popup') {
+            const popoverElement = document.querySelector('.popover')
+            if (!popoverElement) {
+                return
+            }
+            formElement = popoverElement.querySelector('[data-inline-edit-input]')
+            if (!formElement) {
+                return
+            }
+        } else {
+            // Inline modu için mevcut işlem
+            const editModeElement = fieldElement.querySelector('[data-inline-edit-edit-mode]')
+            if (!editModeElement || editModeElement.classList.contains('d-none')) {
+                return
+            }
+            formElement = editModeElement.querySelector('[data-inline-edit-input]')
+            if (!formElement) {
+                return
+            }
         }
 
-        const input = editMode.querySelector('[data-inline-edit-input]')
-        if (!input) {
-            return
-        }
-
-        // Input değerini al
-        const { value: newValue, isMultiple, selectedTexts } = this.getInputValue(input)
+        // Form element değerini al
+        const { value: newValue, isMultiple, selectedTexts } = this.getInputValue(formElement)
         
         // Değerleri normalize et ve karşılaştır
         const newValueStr = this.normalizeValueForComparison(newValue)
@@ -399,7 +721,7 @@ class InlineEditManager {
             fieldData: this.activeFieldData,
             value: newValue,
             isMultiple: isMultiple,
-            input: input,
+            formElement: formElement,
             preventDefault: false
         })
 
@@ -421,6 +743,7 @@ class InlineEditManager {
             this.emit('error', {
                 field: fieldElement,
                 fieldData: this.activeFieldData,
+                formElement: formElement,
                 error: error,
                 action: 'save'
             })
@@ -440,8 +763,50 @@ class InlineEditManager {
             return
         }
 
-        const editMode = fieldElement.querySelector('[data-inline-edit-edit-mode]')
-        if (!editMode || editMode.classList.contains('d-none')) {
+        const editMode = fieldElement.dataset.inlineEditMode || 'inline'
+        
+        // Popover modu için özel işlem
+        if (editMode === 'popup') {
+            // Click outside listener'ı kaldır
+            if (this.boundHandleClickOutside) {
+                document.removeEventListener('click', this.boundHandleClickOutside, true)
+                this.boundHandleClickOutside = null
+            }
+
+            // Original değere geri dön (popover içindeki form element)
+            const popoverElement = document.querySelector('.popover')
+            let formElement = null
+            if (popoverElement) {
+                formElement = popoverElement.querySelector('[data-inline-edit-input]')
+                if (formElement && this.activeFieldData) {
+                    this.setInputValue(formElement, this.activeFieldData.originalValue)
+                }
+            }
+
+            // Event emit: cancel (iptal edildi)
+            this.emit('cancel', {
+                field: fieldElement,
+                fieldData: this.activeFieldData,
+                formElement: formElement,
+                originalValue: this.activeFieldData?.originalValue
+            })
+
+            // Event emit: rejected (iptal edildi - alias)
+            this.emit('rejected', {
+                field: fieldElement,
+                fieldData: this.activeFieldData,
+                formElement: formElement,
+                originalValue: this.activeFieldData?.originalValue
+            })
+
+            // Edit mode'u kapat (popover dispose edilecek)
+            this.closeEditMode(fieldElement, 'cancelled')
+            return
+        }
+
+        // Inline modu için mevcut işlem
+        const editModeElement = fieldElement.querySelector('[data-inline-edit-edit-mode]')
+        if (!editModeElement || editModeElement.classList.contains('d-none')) {
             return
         }
 
@@ -452,16 +817,16 @@ class InlineEditManager {
         }
 
         // Original değere geri dön
-        const input = editMode.querySelector('[data-inline-edit-input]')
-        if (input && this.activeFieldData) {
-            input.value = this.activeFieldData.originalValue
+        const formElement = editModeElement.querySelector('[data-inline-edit-input]')
+        if (formElement && this.activeFieldData) {
+            this.setInputValue(formElement, this.activeFieldData.originalValue)
         }
 
         // Event emit: cancel (iptal edildi)
         this.emit('cancel', {
             field: fieldElement,
             fieldData: this.activeFieldData,
-            input: input,
+            formElement: formElement,
             originalValue: this.activeFieldData?.originalValue
         })
 
@@ -469,7 +834,7 @@ class InlineEditManager {
         this.emit('rejected', {
             field: fieldElement,
             fieldData: this.activeFieldData,
-            input: input,
+            formElement: formElement,
             originalValue: this.activeFieldData?.originalValue
         })
 
@@ -572,10 +937,26 @@ class InlineEditManager {
                 window.flashNotification.success(message)
             }
 
+            // Form element'ini bul (saved event için)
+            const editMode = fieldElement.dataset.inlineEditMode || 'inline'
+            let formElement = null
+            if (editMode === 'popup') {
+                const popoverElement = document.querySelector('.popover')
+                if (popoverElement) {
+                    formElement = popoverElement.querySelector('[data-inline-edit-input]')
+                }
+            } else {
+                const editModeElement = fieldElement.querySelector('[data-inline-edit-edit-mode]')
+                if (editModeElement) {
+                    formElement = editModeElement.querySelector('[data-inline-edit-input]')
+                }
+            }
+
             // Event emit: saved (save başarılı)
             this.emit('saved', {
                 field: fieldElement,
                 fieldData: this.activeFieldData,
+                formElement: formElement,
                 value: newValue,
                 displayValue: displayValue,
                 response: data
@@ -597,10 +978,26 @@ class InlineEditManager {
                 window.flashNotification.error(errorMessage)
             }
 
+            // Form element'ini bul (error event için)
+            const editMode = fieldElement.dataset.inlineEditMode || 'inline'
+            let formElement = null
+            if (editMode === 'popup') {
+                const popoverElement = document.querySelector('.popover')
+                if (popoverElement) {
+                    formElement = popoverElement.querySelector('[data-inline-edit-input]')
+                }
+            } else {
+                const editModeElement = fieldElement.querySelector('[data-inline-edit-edit-mode]')
+                if (editModeElement) {
+                    formElement = editModeElement.querySelector('[data-inline-edit-input]')
+                }
+            }
+
             // Event emit: error (save hatası)
             this.emit('error', {
                 field: fieldElement,
                 fieldData: this.activeFieldData,
+                formElement: formElement,
                 error: errorMessage,
                 action: 'save',
                 response: data
@@ -618,15 +1015,40 @@ class InlineEditManager {
             this.boundHandleClickOutside = null
         }
 
-        // Read mode ve edit mode geçişi
-        const readMode = fieldElement.querySelector('[data-inline-edit-read-mode]')
-        const editMode = fieldElement.querySelector('[data-inline-edit-edit-mode]')
+        const editMode = fieldElement.dataset.inlineEditMode || 'inline'
 
-        if (readMode) {
-            readMode.classList.remove('d-none')
-        }
-        if (editMode) {
-            editMode.classList.add('d-none')
+        // Popover modu için özel işlem
+        if (editMode === 'popup') {
+            // Popover instance'ı dispose et (sadece hala geçerliyse)
+            if (fieldElement._popoverInstance) {
+                try {
+                    // Popover instance'ının hala geçerli olduğunu kontrol et
+                    const triggerButton = fieldElement.querySelector('[data-inline-edit-enable]')
+                    if (triggerButton) {
+                        const instance = bootstrap.Popover.getInstance(triggerButton)
+                        if (instance === fieldElement._popoverInstance) {
+                            fieldElement._popoverInstance.dispose()
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Popover dispose error:', error)
+                } finally {
+                    fieldElement._popoverInstance = null
+                }
+            }
+        } else {
+            // Inline modu için read mode ve edit mode geçişi
+            const readMode = fieldElement.querySelector('[data-inline-edit-read-mode]')
+            const editModeElement = fieldElement.querySelector('[data-inline-edit-edit-mode]')
+
+            if (readMode) {
+                readMode.classList.remove('d-none')
+            }
+            if (editModeElement) {
+                // Edit mode container'ı temizle (content'i kaldır)
+                editModeElement.innerHTML = ''
+                editModeElement.classList.add('d-none')
+            }
         }
 
         // Error mesajını temizle
@@ -634,6 +1056,22 @@ class InlineEditManager {
 
         // Loading state'i temizle
         this.setLoadingState(fieldElement, false)
+
+        // Form element'ini bul (closed event için - kapanmadan önce)
+        const editModeForClosed = fieldElement.dataset.inlineEditMode || 'inline'
+        let formElement = null
+        if (editModeForClosed === 'popup') {
+            // Popover kapanmadan önce form element'ini bul
+            const popoverElement = document.querySelector('.popover')
+            if (popoverElement) {
+                formElement = popoverElement.querySelector('[data-inline-edit-input]')
+            }
+        } else {
+            const editModeElement = fieldElement.querySelector('[data-inline-edit-edit-mode]')
+            if (editModeElement && !editModeElement.classList.contains('d-none')) {
+                formElement = editModeElement.querySelector('[data-inline-edit-input]')
+            }
+        }
 
         // Aktif field'ı temizle
         if (this.activeField === fieldElement) {
@@ -645,6 +1083,7 @@ class InlineEditManager {
         this.emit('closed', {
             field: fieldElement,
             fieldData: this.activeFieldData,
+            formElement: formElement,
             reason: reason
         })
     }
@@ -669,10 +1108,44 @@ class InlineEditManager {
         this.updateFieldValue(fieldElement, value)
 
         // Input value'yu güncelle (bir sonraki edit için - raw value)
-        // Select için array değerler doğrudan set edilemez, bu yüzden skip ediyoruz
-        const input = fieldElement.querySelector('[data-inline-edit-input]')
-        if (input && input.tagName !== 'SELECT') {
-            input.value = value
+        // Template içindeki input değerini güncelle
+        const contentTemplate = fieldElement.querySelector('[data-inline-edit-content-template]')
+        if (contentTemplate) {
+            // Template content'ini bir div'e koy
+            const tempDiv = document.createElement('div')
+            tempDiv.innerHTML = contentTemplate.innerHTML
+            
+            // Input'u bul ve değeri güncelle
+            const input = tempDiv.querySelector('[data-inline-edit-input]')
+            if (input) {
+                this.setInputValue(input, value)
+                
+                // Select elementleri için selected attribute'larını ekle
+                if (input.tagName === 'SELECT') {
+                    Array.from(input.options).forEach(option => {
+                        if (option.selected) {
+                            option.setAttribute('selected', 'selected')
+                        } else {
+                            option.removeAttribute('selected')
+                        }
+                    })
+                }
+            }
+            
+            // Güncellenmiş HTML'i template'e geri kaydet
+            contentTemplate.innerHTML = tempDiv.innerHTML
+        }
+        
+        // Inline modu için edit mode içindeki input'u da güncelle (eğer açıksa)
+        const editMode = fieldElement.dataset.inlineEditMode || 'inline'
+        if (editMode === 'inline') {
+            const editModeElement = fieldElement.querySelector('[data-inline-edit-edit-mode]')
+            if (editModeElement && !editModeElement.classList.contains('d-none')) {
+                const input = editModeElement.querySelector('[data-inline-edit-input]')
+                if (input) {
+                    this.setInputValue(input, value)
+                }
+            }
         }
     }
 
@@ -680,15 +1153,35 @@ class InlineEditManager {
      * Error mesajını gösterir
      */
     showError(fieldElement, message) {
-        const errorMessage = fieldElement.querySelector('[data-inline-edit-error]')
-        if (errorMessage) {
-            errorMessage.textContent = message
-            errorMessage.classList.add('d-block')
-        }
+        const editMode = fieldElement.dataset.inlineEditMode || 'inline'
+        
+        // Popover modu için popover içindeki elementleri bul
+        if (editMode === 'popup') {
+            const popoverElement = document.querySelector('.popover')
+            if (popoverElement) {
+                const errorMessage = popoverElement.querySelector('[data-inline-edit-error]')
+                if (errorMessage) {
+                    errorMessage.textContent = message
+                    errorMessage.classList.add('d-block')
+                }
 
-        const input = fieldElement.querySelector('[data-inline-edit-input]')
-        if (input) {
-            input.classList.add('is-invalid')
+                const input = popoverElement.querySelector('[data-inline-edit-input]')
+                if (input) {
+                    input.classList.add('is-invalid')
+                }
+            }
+        } else {
+            // Inline modu için mevcut işlem
+            const errorMessage = fieldElement.querySelector('[data-inline-edit-error]')
+            if (errorMessage) {
+                errorMessage.textContent = message
+                errorMessage.classList.add('d-block')
+            }
+
+            const input = fieldElement.querySelector('[data-inline-edit-input]')
+            if (input) {
+                input.classList.add('is-invalid')
+            }
         }
     }
 
@@ -696,15 +1189,35 @@ class InlineEditManager {
      * Error mesajını temizler
      */
     clearError(fieldElement) {
-        const errorMessage = fieldElement.querySelector('[data-inline-edit-error]')
-        if (errorMessage) {
-            errorMessage.textContent = ''
-            errorMessage.classList.remove('d-block')
-        }
+        const editMode = fieldElement.dataset.inlineEditMode || 'inline'
+        
+        // Popover modu için popover içindeki elementleri bul
+        if (editMode === 'popup') {
+            const popoverElement = document.querySelector('.popover')
+            if (popoverElement) {
+                const errorMessage = popoverElement.querySelector('[data-inline-edit-error]')
+                if (errorMessage) {
+                    errorMessage.textContent = ''
+                    errorMessage.classList.remove('d-block')
+                }
 
-        const input = fieldElement.querySelector('[data-inline-edit-input]')
-        if (input) {
-            input.classList.remove('is-invalid')
+                const input = popoverElement.querySelector('[data-inline-edit-input]')
+                if (input) {
+                    input.classList.remove('is-invalid')
+                }
+            }
+        } else {
+            // Inline modu için mevcut işlem
+            const errorMessage = fieldElement.querySelector('[data-inline-edit-error]')
+            if (errorMessage) {
+                errorMessage.textContent = ''
+                errorMessage.classList.remove('d-block')
+            }
+
+            const input = fieldElement.querySelector('[data-inline-edit-input]')
+            if (input) {
+                input.classList.remove('is-invalid')
+            }
         }
     }
 
@@ -712,24 +1225,53 @@ class InlineEditManager {
      * Loading state'i ayarlar
      */
     setLoadingState(fieldElement, isLoading) {
-        const input = fieldElement.querySelector('[data-inline-edit-input]')
-        if (input) {
-            input.disabled = isLoading
-        }
+        const editMode = fieldElement.dataset.inlineEditMode || 'inline'
+        
+        // Popover modu için popover içindeki elementleri bul
+        if (editMode === 'popup') {
+            const popoverElement = document.querySelector('.popover')
+            if (popoverElement) {
+                const input = popoverElement.querySelector('[data-inline-edit-input]')
+                if (input) {
+                    input.disabled = isLoading
+                }
 
-        const saveButton = fieldElement.querySelector('[data-inline-edit-save]')
-        if (saveButton) {
-            saveButton.disabled = isLoading
-            if (isLoading) {
-                saveButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'
-            } else {
-                saveButton.innerHTML = '<i class="ri-check-line"></i>'
+                const saveButton = popoverElement.querySelector('[data-inline-edit-save]')
+                if (saveButton) {
+                    saveButton.disabled = isLoading
+                    if (isLoading) {
+                        saveButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'
+                    } else {
+                        saveButton.innerHTML = '<i class="ri-check-line"></i>'
+                    }
+                }
+
+                const cancelButton = popoverElement.querySelector('[data-inline-edit-cancel]')
+                if (cancelButton) {
+                    cancelButton.disabled = isLoading
+                }
             }
-        }
+        } else {
+            // Inline modu için mevcut işlem
+            const input = fieldElement.querySelector('[data-inline-edit-input]')
+            if (input) {
+                input.disabled = isLoading
+            }
 
-        const cancelButton = fieldElement.querySelector('[data-inline-edit-cancel]')
-        if (cancelButton) {
-            cancelButton.disabled = isLoading
+            const saveButton = fieldElement.querySelector('[data-inline-edit-save]')
+            if (saveButton) {
+                saveButton.disabled = isLoading
+                if (isLoading) {
+                    saveButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'
+                } else {
+                    saveButton.innerHTML = '<i class="ri-check-line"></i>'
+                }
+            }
+
+            const cancelButton = fieldElement.querySelector('[data-inline-edit-cancel]')
+            if (cancelButton) {
+                cancelButton.disabled = isLoading
+            }
         }
     }
 
@@ -903,6 +1445,14 @@ class InlineEditManager {
         } else {
             // Input veya textarea için normal value set
             input.value = value
+            
+            // Input için attribute'u da set et (textarea için gerekli değil)
+            if (input.tagName === 'INPUT') {
+                input.setAttribute('value', value)
+            }
+            
+            // Input event'i tetikle (bazı framework'ler için gerekli olabilir)
+            // input.dispatchEvent(new Event('input', { bubbles: true }))
         }
     }
 

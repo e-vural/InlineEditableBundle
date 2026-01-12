@@ -15,6 +15,9 @@ class InlineEditableExtension extends Extension implements PrependExtensionInter
         $configuration = new Configuration();
         $config = $this->processConfiguration($configuration, $configs);
 
+        // Edit mode'u parameter olarak container'a ekle
+        $container->setParameter('inline_editable.edit_mode', $config['edit_mode'] ?? 'inline');
+        
         // Themes'i parameter olarak container'a ekle
         $container->setParameter('inline_editable.themes', $config['themes'] ?? []);
 

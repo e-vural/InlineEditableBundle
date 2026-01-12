@@ -11,4 +11,5 @@ services:
         arguments:
             $twig: '@twig'
             $themes: '%inline_editable.themes%'
+            $editMode: '%inline_editable.edit_mode%'
 
