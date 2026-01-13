@@ -3,14 +3,16 @@
 namespace Vrl\InlineEditableBundle\Twig;
 
 use Twig\Environment;
+use Twig\Extension\RuntimeExtensionInterface;
 
-class InlineEditableRuntime
+class InlineEditableRuntime implements RuntimeExtensionInterface
 {
     public function __construct(
         private Environment $twig,
         private array $themes = [],
         private string $editMode = 'inline'
     ) {
+
     }
 
     public function renderInput(array $config): string

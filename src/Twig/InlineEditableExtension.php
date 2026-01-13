@@ -21,5 +21,7 @@ class InlineEditableExtension extends AbstractExtension
             ]),
         ];
     }
+
+
 }
 

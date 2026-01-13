@@ -19,7 +19,7 @@
 {% set editMode = config.editMode ?? 'inline' %}
 {% set editableValue %}
     <span class="inline-edit-value" data-inline-edit-editable>
-        {{ config.displayValue ?: '-' }}
+        {{ config.displayValue|raw ?: '-' }}
     </span>
 {% endset %}
 <div class="inline-edit-field"
